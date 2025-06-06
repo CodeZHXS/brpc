@@ -19,6 +19,7 @@ cmake_minimum_required(VERSION 2.8.10)
 project(bthread_tag_echo_c++ C CXX)
 
 option(LINK_SO "Whether examples are linked dynamically" OFF)
+option(WITH_BTHREAD_TRACER "With bthread tracer supported" ON)
 
 execute_process(
     COMMAND bash -c "find ${PROJECT_SOURCE_DIR}/../.. -type d -regex \".*output/include$\" | head -n1 | xargs dirname | tr -d '\n'"
@@ -32,6 +33,20 @@ include(FindProtobuf)
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER echo.proto)
 # include PROTO_HEADER
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+if (WITH_BTHREAD_TRACER)
+    if (NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux")  OR NOT (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64"))
+        message(FATAL_ERROR "bthread tracer is only supported on Linux x86_64 platform")
+    endif()
+    find_path(LIBUNWIND_INCLUDE_PATH NAMES libunwind.h)
+    find_library(LIBUNWIND_LIB NAMES unwind)
+    find_library(LIBUNWIND_X86_64_LIB NAMES unwind-x86_64)
+    if (NOT LIBUNWIND_INCLUDE_PATH OR NOT LIBUNWIND_LIB)
+        message(FATAL_ERROR "Fail to find libunwind, which is needed by bthread tracer")
+    endif()
+    add_definitions(-DBRPC_BTHREAD_TRACER)
+    include_directories(${LIBUNWIND_INCLUDE_PATH})
+endif ()
 
 # Search for libthrift* by best effort. If it is not found and brpc is
 # compiled with thrift protocol enabled, a link error would be reported.
@@ -70,7 +85,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "${DEFINE_CLOCK_GETTIME} -DNDEBUG -O2 -D__const__=__unused__ -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS "${DEFINE_CLOCK_GETTIME} -DNDEBUG -g -D__const__=__unused__ -pipe -W -Wall -Wno-unused-parameter -fPIC -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBRPC_ENABLE_CPU_PROFILER")
 
 if(CMAKE_VERSION VERSION_LESS "3.1.3")
@@ -112,6 +127,11 @@ set(DYNAMIC_LIB
     ${THRIFT_LIB}
     dl
     )
+
+if (WITH_BTHREAD_TRACER)
+    set(DYNAMIC_LIB ${DYNAMIC_LIB} ${LIBUNWIND_LIB} ${LIBUNWIND_X86_64_LIB})
+    set(BRPC_PRIVATE_LIBS "${BRPC_PRIVATE_LIBS} -lunwind -lunwind-x86_64")
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(DYNAMIC_LIB ${DYNAMIC_LIB}

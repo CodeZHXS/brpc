@@ -272,6 +272,12 @@ TaskTracer::Result TaskTracer::TraceImpl(bthread_t tid) {
         }
     }
 
+    static bool first_call = true;
+    if (first_call) {
+        status = TASK_STATUS_FIRST_READY;
+        first_call = false;
+    }
+
     if (TASK_STATUS_UNKNOWN == status) {
         return Result::MakeErrorResult("bthread=%d not exist now", tid);
     } else if (TASK_STATUS_CREATED == status) {
